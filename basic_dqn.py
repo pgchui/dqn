@@ -32,7 +32,7 @@ class DQN(nn.Module):
     
 class Agent:
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions, 
-                 max_mem_size=100000, eps_min=0.01, eps_dec=5e-4) -> None:
+                 max_mem_size=100000, eps_min=0.01, eps_dec=5e-4, use_target_net=True, target_update_step=50, seed=None) -> None:
         self.gamma = gamma
         self.epsilon = epsilon
         self.eps_min = eps_min
@@ -45,14 +45,28 @@ class Agent:
         self.input_dims = input_dims
         self.prediction = False
         self.loss = np.inf
+        self.use_target_net = use_target_net
+        self.target_update_per_step = target_update_step
+        self.step = 0
+        self.seed=seed
+        
+        if self.seed is not None:
+            torch.manual_seed(self.seed)
         
         self.Q_eval = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
                           fc2_dims=256, n_actions=n_actions)
+        self.Q_target = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
+                          fc2_dims=256, n_actions=n_actions)
+        self._update_target_net()
+        
         self.state_memory = np.zeros((self.mem_size, *self.input_dims), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *self.input_dims), dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool)
+        
+    def _update_target_net(self):
+        self.Q_target.load_state_dict(self.Q_eval.state_dict())
         
     def store_transition(self, state, action, reward, new_state, done):
         idx = self.mem_counter % self.mem_size
@@ -93,7 +107,7 @@ class Agent:
         action_batch = self.action_memory[batch]
         
         q_eval = self.Q_eval.forward(state_batch)[batch_idx, action_batch]
-        q_next = self.Q_eval.forward(new_state_batch)
+        q_next = self.Q_target.forward(new_state_batch) if self.use_target_net else self.Q_eval.forward(new_state_batch)
         q_next[terminal_batch] = 0.0
         
         q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
@@ -105,6 +119,11 @@ class Agent:
         
         self.epsilon = self.epsilon - self.eps_dec if self.epsilon >= self.eps_min \
                         + self.eps_dec else self.eps_min
+                      
+        # record total learn step number
+        self.step += 1
+        if self.step % self.target_update_per_step == 0:
+            self._update_target_net()
                         
     def save(self, filename):
         torch.save(self.Q_eval.state_dict(), filename)

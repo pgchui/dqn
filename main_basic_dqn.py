@@ -5,6 +5,7 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
 TRAIN = True
+dqn_type = 'basic_dqn_target_net'
 
 if __name__ == '__main__':
     env = gym.make('LunarLander-v2', render_mode='human' if not TRAIN else 'rgb_array')
@@ -17,7 +18,7 @@ if __name__ == '__main__':
         
         max_score = -np.inf
         
-        writer = SummaryWriter('./tfb/basic_dqn')
+        writer = SummaryWriter(f'./tfb/{dqn_type}')
         
         for i in range(n_games):
             score = 0
@@ -35,7 +36,7 @@ if __name__ == '__main__':
             
             if score > max_score:
                 max_score = score
-                agent.save('lunarlander_basic_dqn_max_score.pth')
+                agent.save(f'lunarlander_{dqn_type}_max_score.pth')
                 print('Model saved -v-')
                 
             scores.append(score)
