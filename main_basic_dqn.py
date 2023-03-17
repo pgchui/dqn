@@ -1,24 +1,29 @@
 import gym
 from basic_dqn import Agent
 import numpy as np
+from datetime import datetime
+from tqdm import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
 
-TRAIN = True
-dqn_type = 'basic_dqn_target_net'
+TRAIN = False
+GUI = False
+dqn_type = 'double_dqn'
+game = 'CartPole-v1'
 
 if __name__ == '__main__':
-    env = gym.make('LunarLander-v2', render_mode='human' if not TRAIN else 'rgb_array')
-    agent = Agent(gamma=0.99, epsilon=1.0, batch_size=64, n_actions=4, 
-                  eps_min=0.01, input_dims=[8], lr=0.003)
+    env = gym.make(f'{game}', render_mode='human' if GUI else 'rgb_array')
+    agent = Agent(gamma=0.99, epsilon=1.0, batch_size=64, n_actions=env.action_space.n, 
+                  eps_min=0.01, eps_dec=1e-4, input_dims=env.observation_space.shape, lr=5e-4, 
+                  double_dqn=True, learn_per_target_net_update=50)
     
     if TRAIN:
-        scores, eps_history = [], []
-        n_games = 500
+        scores = []
+        n_games = 5000
         
-        max_score = -np.inf
+        writer = SummaryWriter(f'./tfb/{dqn_type}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         
-        writer = SummaryWriter(f'./tfb/{dqn_type}')
+        step_counter = 0
         
         for i in range(n_games):
             score = 0
@@ -26,6 +31,8 @@ if __name__ == '__main__':
             obs, _ = env.reset()
             # each episode
             while (not terminated) and (not truncated):
+                step_counter += 1
+                
                 action = agent.choose_action(obs)
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 score += reward
@@ -33,38 +40,54 @@ if __name__ == '__main__':
                                     terminated or truncated)
                 agent.learn()
                 obs = new_obs
-            
-            if score > max_score:
-                max_score = score
-                agent.save(f'lunarlander_{dqn_type}_max_score.pth')
-                print('Model saved -v-')
+                
+                if step_counter % 5000 == 0:
+                    agent.save(f'{game}_{dqn_type}_{step_counter}.pth')
                 
             scores.append(score)
-            eps_history.append(agent.epsilon)
             
-            avg_score = np.mean(scores[-100:])
+            avg_score_100 = np.mean(scores[-100:])
+            avg_score_50 = np.mean(scores[-50:])
+            avg_score_10 = np.mean(scores[-10:])
             
-            print('episode ', i, 'score %.2f' % score, 
-                  'best score %.2f' % max_score,
-                  'average score %.2f' % avg_score,
+            print('episode ', i, 'score %.2f' % score,
+                  'average score 100 %.2f' % avg_score_100,
+                  'average score 50 %.2f' % avg_score_50,
+                  'average score 10 %.2f' % avg_score_10,
                   'epsilon %.2f' % agent.epsilon
                   )
 
             writer.add_scalar('Loss/train', agent.loss, i)
             writer.add_scalar('Score/train', score, i)
-            writer.add_scalar('Score_ave100/train', avg_score, i)
+            writer.add_scalar('Score_ave100/train', avg_score_100, i)
+            writer.add_scalar('Score_ave50/train', avg_score_50, i)
+            writer.add_scalar('Score_ave10/train', avg_score_10, i)
             writer.add_scalar('Epsilon/train', agent.epsilon, i)
+            
+            if avg_score_100 > 400:
+                agent.save(f'{game}_{dqn_type}_success.pth')
+                break
         
         env.close()
     else:
-        terminated = truncated = False
-        obs, _ = env.reset()
-        agent.load('lunarlander_basic_dqn_max_score.pth')
+        test_scores = []
+        agent.load(f'{game}_{dqn_type}_success.pth')
         agent.prediction = True
-        # each episode
-        while (not terminated) and (not truncated):
-            action = agent.choose_action(obs)
-            new_obs, reward, terminated, truncated, _ = env.step(action)
-            env.render()
-            
+        
+        for _ in tqdm(range(100)):
+            terminated = truncated = False
+            obs, _ = env.reset()
+            # each episode
+            score = 0
+            while (not terminated) and (not truncated):
+                action = agent.choose_action(obs)
+                new_obs, reward, terminated, truncated, _ = env.step(action)
+                env.render()
+                
+                obs = new_obs
+                
+                score += reward
+            test_scores.append(score)
+                
+        print(f'reward = {np.mean(test_scores)}')
         env.close()

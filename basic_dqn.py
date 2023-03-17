@@ -19,7 +19,6 @@ class DQN(nn.Module):
             nn.Linear(self.fc2_dims, self.n_actions)
         )
         
-        
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         self.loss = nn.MSELoss()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -32,7 +31,8 @@ class DQN(nn.Module):
     
 class Agent:
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions, 
-                 max_mem_size=100000, eps_min=0.01, eps_dec=5e-4, use_target_net=True, target_update_step=50, seed=None) -> None:
+                 max_mem_size=100000, eps_min=0.01, eps_dec=5e-4, double_dqn=True, 
+                 learn_per_target_net_update=50, seed=None) -> None:
         self.gamma = gamma
         self.epsilon = epsilon
         self.eps_min = eps_min
@@ -45,9 +45,9 @@ class Agent:
         self.input_dims = input_dims
         self.prediction = False
         self.loss = np.inf
-        self.use_target_net = use_target_net
-        self.target_update_per_step = target_update_step
-        self.step = 0
+        self.double_dqn = double_dqn
+        self.target_net_update_per_step = learn_per_target_net_update
+        self.learn_counter = 0
         self.seed=seed
         
         if self.seed is not None:
@@ -81,7 +81,7 @@ class Agent:
     def choose_action(self, obs):
         if self.prediction or np.random.random() > self.epsilon:
             state = torch.tensor(np.array([obs])).to(self.Q_eval.device)
-            actions = self.Q_eval.forward(state)
+            actions = self.Q_eval.forward(state) if self.double_dqn else self.Q_target.forward(state)
             action = torch.argmax(actions).item()
         else:
             action = np.random.choice(self.action_space)
@@ -89,6 +89,9 @@ class Agent:
         return action
     
     def learn(self):
+        # record total learn step number
+        self.learn_counter += 1
+        
         if self.mem_counter < self.batch_size:
             return
         
@@ -107,7 +110,7 @@ class Agent:
         action_batch = self.action_memory[batch]
         
         q_eval = self.Q_eval.forward(state_batch)[batch_idx, action_batch]
-        q_next = self.Q_target.forward(new_state_batch) if self.use_target_net else self.Q_eval.forward(new_state_batch)
+        q_next = self.Q_target.forward(new_state_batch) if self.double_dqn else self.Q_eval.forward(new_state_batch)
         q_next[terminal_batch] = 0.0
         
         q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
@@ -120,9 +123,7 @@ class Agent:
         self.epsilon = self.epsilon - self.eps_dec if self.epsilon >= self.eps_min \
                         + self.eps_dec else self.eps_min
                       
-        # record total learn step number
-        self.step += 1
-        if self.step % self.target_update_per_step == 0:
+        if self.learn_counter % self.target_net_update_per_step == 0:
             self._update_target_net()
                         
     def save(self, filename):
