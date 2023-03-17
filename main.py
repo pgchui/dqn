@@ -4,14 +4,15 @@ from tqdm import tqdm
 import os
 
 import gym
-from basic_dqn import Agent
+from dqn import Agent
 
 from torch.utils.tensorboard import SummaryWriter
 
-TRAIN = True
-GUI = False
+TRAIN = False
+GUI = True and (not TRAIN)
 dqn_type = 'dueling_dqn'
-game = 'CartPole-v1'
+game = 'LunarLander-v2'
+success_score = 200
 
 if __name__ == '__main__':
     env = gym.make(f'{game}', render_mode='human' if GUI else 'rgb_array')
@@ -21,13 +22,13 @@ if __name__ == '__main__':
     
     if TRAIN:
         time = datetime.now().strftime("%Y%m%d%H%M%S")
-        checkpoints_dir = f'checkpoints/{game}/{time}_{dqn_type}'
+        checkpoints_dir = f'./checkpoints/{game}/{time}_{dqn_type}'
         os.makedirs(checkpoints_dir, exist_ok=True)
         
         scores = []
         n_games = 5000
         
-        writer = SummaryWriter(f'./tfb/{time}_{dqn_type}')
+        writer = SummaryWriter(f'./tfb/{game}/{time}_{dqn_type}')
         
         step_counter = 0
         
@@ -70,14 +71,14 @@ if __name__ == '__main__':
             writer.add_scalar('Score_ave10/train', avg_score_10, i)
             writer.add_scalar('Epsilon/train', agent.epsilon, i)
             
-            if avg_score_100 > 400:
+            if avg_score_100 > success_score:
                 agent.save(f'{checkpoints_dir}/{game}_{dqn_type}_success.pth')
                 break
         
         env.close()
     else:
         test_scores = []
-        agent.load(f'{game}_{dqn_type}_success.pth')
+        agent.load('checkpoints/LunarLander-v2/20230317113533_dueling_dqn/LunarLander-v2_dueling_dqn_150000.pth')
         agent.prediction = True
         
         for _ in tqdm(range(100)):
