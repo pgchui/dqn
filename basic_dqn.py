@@ -25,14 +25,65 @@ class DQN(nn.Module):
         self.to(self.device)
         
     def forward(self, state):
-        actions = self.fc(state)
+        q_vals = self.fc(state)
         
-        return actions
+        return q_vals
+    
+class Dueling_DQN(nn.Module):
+    def __init__(self, lr, input_dims, fc1_dims, fc2_dims, val_fc1_dims, val_fc2_dims, 
+                 adv_fc1_dims, adv_fc2_dims, n_actions) -> None:
+        super().__init__()
+        self.input_dims = input_dims
+        self.fc1_dims = fc1_dims
+        self.fc2_dims = fc2_dims
+        self.val_fc1_dims = val_fc1_dims
+        self.val_fc2_dims = val_fc2_dims
+        self.adv_fc1_dims = adv_fc1_dims
+        self.adv_fc2_dims = adv_fc2_dims
+        self.n_actions = n_actions
+        
+        self.fc = nn.Sequential(
+            nn.Linear(*self.input_dims, self.fc1_dims),
+            nn.ReLU(),
+            nn.Linear(self.fc1_dims, self.fc2_dims),
+            nn.ReLU(),
+        )
+        
+        self.val_fc = nn.Sequential(
+            nn.Linear(self.fc2_dims, self.val_fc1_dims),
+            nn.ReLU(),
+            nn.Linear(self.val_fc1_dims, self.val_fc2_dims),
+            nn.ReLU(),
+            nn.Linear(self.val_fc2_dims, 1)
+        )
+        
+        self.adv_fc = nn.Sequential(
+            nn.Linear(self.fc2_dims, self.adv_fc1_dims),
+            nn.ReLU(),
+            nn.Linear(self.adv_fc1_dims, self.adv_fc2_dims),
+            nn.ReLU(),
+            nn.Linear(self.adv_fc2_dims, n_actions)
+        )
+        
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.loss = nn.MSELoss()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.to(self.device)
+        
+    def forward(self, state):
+        x = self.fc(state)
+        v = self.val_fc(x)
+        a = self.adv_fc(x)
+        
+        q_vals = v + a - a.mean(dim=-1, keepdim=True).expand(-1, self.n_actions)
+        
+        return q_vals
+        
     
 class Agent:
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions, 
                  max_mem_size=100000, eps_min=0.01, eps_dec=5e-4, double_dqn=True, 
-                 learn_per_target_net_update=50, seed=None) -> None:
+                 dueling_dqn=True, learn_per_target_net_update=50, seed=None) -> None:
         self.gamma = gamma
         self.epsilon = epsilon
         self.eps_min = eps_min
@@ -46,6 +97,7 @@ class Agent:
         self.prediction = False
         self.loss = np.inf
         self.double_dqn = double_dqn
+        self.dueling_dqn = dueling_dqn
         self.target_net_update_per_step = learn_per_target_net_update
         self.learn_counter = 0
         self.seed=seed
@@ -54,9 +106,15 @@ class Agent:
             torch.manual_seed(self.seed)
         
         self.Q_eval = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
-                          fc2_dims=256, n_actions=n_actions)
+                          fc2_dims=256, n_actions=n_actions) if not self.dueling_dqn \
+                      else Dueling_DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
+                          fc2_dims=256, val_fc1_dims=256, val_fc2_dims=256, adv_fc1_dims=256, 
+                          adv_fc2_dims=256, n_actions=n_actions)
         self.Q_target = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
-                          fc2_dims=256, n_actions=n_actions)
+                          fc2_dims=256, n_actions=n_actions) if not self.dueling_dqn \
+                      else Dueling_DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
+                          fc2_dims=256, val_fc1_dims=256, val_fc2_dims=256, adv_fc1_dims=256, 
+                          adv_fc2_dims=256, n_actions=n_actions)
         self._update_target_net()
         
         self.state_memory = np.zeros((self.mem_size, *self.input_dims), dtype=np.float32)

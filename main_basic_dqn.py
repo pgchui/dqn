@@ -1,27 +1,33 @@
-import gym
-from basic_dqn import Agent
 import numpy as np
 from datetime import datetime
 from tqdm import tqdm
+import os
+
+import gym
+from basic_dqn import Agent
 
 from torch.utils.tensorboard import SummaryWriter
 
-TRAIN = False
+TRAIN = True
 GUI = False
-dqn_type = 'double_dqn'
+dqn_type = 'dueling_dqn'
 game = 'CartPole-v1'
 
 if __name__ == '__main__':
     env = gym.make(f'{game}', render_mode='human' if GUI else 'rgb_array')
     agent = Agent(gamma=0.99, epsilon=1.0, batch_size=64, n_actions=env.action_space.n, 
                   eps_min=0.01, eps_dec=1e-4, input_dims=env.observation_space.shape, lr=5e-4, 
-                  double_dqn=True, learn_per_target_net_update=50)
+                  double_dqn=True, dueling_dqn=True, learn_per_target_net_update=50)
     
     if TRAIN:
+        time = datetime.now().strftime("%Y%m%d%H%M%S")
+        checkpoints_dir = f'checkpoints/{game}/{time}_{dqn_type}'
+        os.makedirs(checkpoints_dir, exist_ok=True)
+        
         scores = []
         n_games = 5000
         
-        writer = SummaryWriter(f'./tfb/{dqn_type}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+        writer = SummaryWriter(f'./tfb/{time}_{dqn_type}')
         
         step_counter = 0
         
@@ -42,7 +48,7 @@ if __name__ == '__main__':
                 obs = new_obs
                 
                 if step_counter % 5000 == 0:
-                    agent.save(f'{game}_{dqn_type}_{step_counter}.pth')
+                    agent.save(f'{checkpoints_dir}/{game}_{dqn_type}_{step_counter}.pth')
                 
             scores.append(score)
             
@@ -65,7 +71,7 @@ if __name__ == '__main__':
             writer.add_scalar('Epsilon/train', agent.epsilon, i)
             
             if avg_score_100 > 400:
-                agent.save(f'{game}_{dqn_type}_success.pth')
+                agent.save(f'{checkpoints_dir}/{game}_{dqn_type}_success.pth')
                 break
         
         env.close()
