@@ -13,6 +13,7 @@ GUI = True and (not TRAIN)
 dqn_type = 'dueling_dqn_huberloss'
 game = 'LunarLander-v2'
 success_score = 200
+consecutive_success_break_count = 30
 
 if __name__ == '__main__':
     env = gym.make(f'{game}', render_mode='human' if GUI else 'rgb_array')
@@ -31,6 +32,8 @@ if __name__ == '__main__':
         writer = SummaryWriter(f'./tfb/{game}/{time}_{dqn_type}')
         
         step_counter = 0
+        
+        consecutive_success = 0
         
         for i in range(n_games):
             score = 0
@@ -71,14 +74,23 @@ if __name__ == '__main__':
             writer.add_scalar('Score_ave10/train', avg_score_10, i)
             writer.add_scalar('Epsilon/train', agent.epsilon, i)
             
-            if avg_score_100 > success_score:
+            # if avg_score_100 > success_score:
+            #     agent.save(f'{checkpoints_dir}/{game}_{dqn_type}_success.pth')
+            #     break
+            
+            if i >= 100 and avg_score_100 > success_score:
+                consecutive_success += 1
+            else:
+                consecutive_success = 0
+                
+            if consecutive_success >= consecutive_success_break_count:
                 agent.save(f'{checkpoints_dir}/{game}_{dqn_type}_success.pth')
                 break
         
         env.close()
     else:
         test_scores = []
-        agent.load('checkpoints/LunarLander-v2/20230319151943_dueling_dqn_huberloss/LunarLander-v2_dueling_dqn_huberloss_success.pth')
+        agent.load('checkpoints/LunarLander-v2/20230319162008_dueling_dqn_huberloss/LunarLander-v2_dueling_dqn_huberloss_success.pth')
         agent.prediction = True
         
         for _ in tqdm(range(100)):

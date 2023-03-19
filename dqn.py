@@ -84,10 +84,11 @@ class Dueling_DQN(nn.Module):
     
 class Agent:
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions, 
-                 max_mem_size=100000, eps_min=0.01, eps_dec=5e-4, double_dqn=True, 
+                 max_mem_size=100000, eps_max=1.0, eps_min=0.01, eps_dec=5e-4, double_dqn=True, 
                  dueling_dqn=True, learn_per_target_net_update=50, seed=None) -> None:
         self.gamma = gamma
         self.epsilon = epsilon
+        self.eps_max = eps_max
         self.eps_min = eps_min
         self.eps_dec = eps_dec
         self.lr = lr
@@ -182,7 +183,7 @@ class Agent:
         
         # self.epsilon = self.epsilon - self.eps_dec if self.epsilon >= self.eps_min \
         #                 + self.eps_dec else self.eps_min
-        self.epsilon = max(self.eps_min, 0.5 * 1 / (1 + episode))
+        self.epsilon = max(self.eps_min, self.eps_max * 1 / (1 + episode))
                       
         if self.learn_counter % self.target_net_update_per_step == 0:
             self._update_target_net()
