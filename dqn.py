@@ -20,7 +20,8 @@ class DQN(nn.Module):
         )
         
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.loss = nn.MSELoss()
+        # self.loss = nn.MSELoss()
+        self.loss = nn.HuberLoss()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)
         
@@ -66,7 +67,8 @@ class Dueling_DQN(nn.Module):
         )
         
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.loss = nn.MSELoss()
+        # self.loss = nn.MSELoss()
+        self.loss = nn.HuberLoss()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)
         
@@ -146,7 +148,7 @@ class Agent:
             
         return action
     
-    def learn(self):
+    def learn(self, episode):
         # record total learn step number
         self.learn_counter += 1
         
@@ -178,8 +180,9 @@ class Agent:
         self.loss = loss.item()
         self.Q_eval.optimizer.step()
         
-        self.epsilon = self.epsilon - self.eps_dec if self.epsilon >= self.eps_min \
-                        + self.eps_dec else self.eps_min
+        # self.epsilon = self.epsilon - self.eps_dec if self.epsilon >= self.eps_min \
+        #                 + self.eps_dec else self.eps_min
+        self.epsilon = max(self.eps_min, 0.5 * 1 / (1 + episode))
                       
         if self.learn_counter % self.target_net_update_per_step == 0:
             self._update_target_net()

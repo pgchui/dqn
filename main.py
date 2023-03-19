@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 TRAIN = False
 GUI = True and (not TRAIN)
-dqn_type = 'dueling_dqn'
+dqn_type = 'dueling_dqn_huberloss'
 game = 'LunarLander-v2'
 success_score = 200
 
@@ -45,7 +45,7 @@ if __name__ == '__main__':
                 score += reward
                 agent.store_transition(obs, action, reward, new_obs, 
                                     terminated or truncated)
-                agent.learn()
+                agent.learn(i)
                 obs = new_obs
                 
                 if step_counter % 5000 == 0:
@@ -78,7 +78,7 @@ if __name__ == '__main__':
         env.close()
     else:
         test_scores = []
-        agent.load('checkpoints/LunarLander-v2/20230317113533_dueling_dqn/LunarLander-v2_dueling_dqn_150000.pth')
+        agent.load('checkpoints/LunarLander-v2/20230319151943_dueling_dqn_huberloss/LunarLander-v2_dueling_dqn_huberloss_success.pth')
         agent.prediction = True
         
         for _ in tqdm(range(100)):
