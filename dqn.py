@@ -22,7 +22,8 @@ class DQN(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         # self.loss = nn.MSELoss()
         self.loss = nn.HuberLoss()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') \
+            if not torch.backends.mps.is_available() else torch.device('mps')
         self.to(self.device)
         
     def forward(self, state):
@@ -69,7 +70,8 @@ class Dueling_DQN(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         # self.loss = nn.MSELoss()
         self.loss = nn.HuberLoss()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') \
+            if not torch.backends.mps.is_available() else torch.device('mps')
         self.to(self.device)
         
     def forward(self, state):
