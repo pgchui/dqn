@@ -1,3 +1,4 @@
 tfb
-*.pth
 checkpoints
+*.pth
+.DS_Store

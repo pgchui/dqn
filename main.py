@@ -17,8 +17,8 @@ consecutive_success_break_count = 30
 
 if __name__ == '__main__':
     env = gym.make(f'{game}', render_mode='human' if GUI else 'rgb_array')
-    agent = Agent(gamma=0.99, epsilon=1.0, batch_size=64, n_actions=env.action_space.n, 
-                  eps_min=0.01, eps_dec=1e-4, input_dims=env.observation_space.shape, lr=5e-4, 
+    agent = Agent(gamma=0.99, batch_size=64, n_actions=env.action_space.n, 
+                  eps_min=0.01, input_dims=env.observation_space.shape, lr=5e-4, 
                   double_dqn=True, dueling_dqn=True, learn_per_target_net_update=50)
     
     if TRAIN:
