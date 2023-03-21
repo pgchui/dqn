@@ -142,7 +142,7 @@ class Agent:
         self.mem_counter += 1
         
     def choose_action(self, obs):
-        if self.prediction or np.random.random() > self.epsilon:
+        if self.prediction or np.random.random() > self.epsilon:    # no random selection when evaluation
             state = torch.tensor(np.array([obs])).to(self.Q_eval.device)
             actions = self.Q_eval.forward(state) if self.double_dqn else self.Q_target.forward(state)
             action = torch.argmax(actions).item()
@@ -194,3 +194,9 @@ class Agent:
         
     def load(self, filename):
         self.Q_eval.load_state_dict(torch.load(filename))
+        
+    def eval(self):
+        self.prediction = True
+        
+    def train(self):
+        self.prediction = False

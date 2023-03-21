@@ -91,7 +91,7 @@ if __name__ == '__main__':
     else:
         test_scores = []
         agent.load('checkpoints/LunarLander-v2/20230319162008_dueling_dqn_huberloss/LunarLander-v2_dueling_dqn_huberloss_success.pth')
-        agent.prediction = True
+        agent.eval()
         
         for _ in tqdm(range(100)):
             terminated = truncated = False
