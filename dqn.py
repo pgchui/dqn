@@ -1,22 +1,150 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from abc import ABC
+
+
+class AbstractNoisyLayer(nn.Module, ABC):
+    def __init__(
+            self,
+            input_features: int,
+            output_features: int,
+            sigma: float,
+    ):
+        super().__init__()
+
+        self.sigma = sigma
+        self.input_features = input_features
+        self.output_features = output_features
+
+        self.mu_bias = nn.Parameter(torch.FloatTensor(output_features))
+        self.sigma_bias = nn.Parameter(torch.FloatTensor(output_features))
+        self.mu_weight = nn.Parameter(torch.FloatTensor(output_features, input_features))
+        self.sigma_weight = nn.Parameter(torch.FloatTensor(output_features, input_features))
+
+        self.register_buffer('epsilon_input', torch.FloatTensor(input_features))
+        self.register_buffer('epsilon_output', torch.FloatTensor(output_features))
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            sample_noise: bool = True
+    ) -> torch.Tensor:
+        if not self.training:
+            return nn.functional.linear(x, weight=self.mu_weight, bias=self.mu_bias)
+
+        if sample_noise:
+            self.sample_noise()
+
+        return nn.functional.linear(x, weight=self.weight, bias=self.bias)
+
+    @property
+    def weight(self) -> torch.Tensor:
+        raise NotImplementedError
+
+    @property
+    def bias(self) -> torch.Tensor:
+        raise NotImplementedError
+
+    def sample_noise(self) -> None:
+        raise NotImplementedError
+
+    def parameter_initialization(self) -> None:
+        raise NotImplementedError
+
+    def get_noise_tensor(self, features: int) -> torch.Tensor:
+        noise = torch.FloatTensor(features).uniform_(-self.bound, self.bound).to(self.mu_bias.device)
+        return torch.sign(noise) * torch.sqrt(torch.abs(noise))
+
+
+class IndependentNoisyLayer(AbstractNoisyLayer):
+    def __init__(
+            self,
+            input_features: int,
+            output_features: int,
+            sigma: float = 0.017,
+    ):
+        super().__init__(
+            input_features=input_features,
+            output_features=output_features,
+            sigma=sigma
+        )
+
+        self.bound = (3 / input_features) ** 0.5
+        self.parameter_initialization()
+        self.sample_noise()
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.sigma_weight * self.epsilon_weight + self.mu_weight
+
+    @property
+    def bias(self) -> torch.Tensor:
+        return self.sigma_bias * self.epsilon_bias + self.mu_bias
+
+    def sample_noise(self) -> None:
+        self.epsilon_bias = self.get_noise_tensor((self.output_features,))
+        self.epsilon_weight = self.get_noise_tensor((self.output_features, self.input_features))
+
+    def parameter_initialization(self) -> None:
+        self.sigma_bias.data.fill_(self.sigma)
+        self.sigma_weight.data.fill_(self.sigma)
+        self.mu_bias.data.uniform_(-self.bound, self.bound)
+        self.mu_weight.data.uniform_(-self.bound, self.bound)
+
+
+class FactorisedNoisyLayer(AbstractNoisyLayer):
+    def __init__(
+            self,
+            input_features: int,
+            output_features: int,
+            sigma: float = 0.4, # 0.5,
+    ):
+        super().__init__(
+            input_features=input_features,
+            output_features=output_features,
+            sigma=sigma
+        )
+
+        self.bound = input_features**(-0.5)
+        self.parameter_initialization()
+        self.sample_noise()
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.sigma_weight * torch.ger(self.epsilon_output, self.epsilon_input) + self.mu_weight
+
+    @property
+    def bias(self) -> torch.Tensor:
+        return self.sigma_bias * self.epsilon_output + self.mu_bias
+
+    def sample_noise(self) -> None:
+        self.epsilon_input = self.get_noise_tensor(self.input_features)
+        self.epsilon_output = self.get_noise_tensor(self.output_features)
+
+    def parameter_initialization(self) -> None:
+        self.mu_bias.data.uniform_(-self.bound, self.bound)
+        self.sigma_bias.data.fill_(self.sigma * self.bound)
+        self.mu_weight.data.uniform_(-self.bound, self.bound)
+        self.sigma_weight.data.fill_(self.sigma * self.bound)
 
 class DQN(nn.Module):
-    def __init__(self, lr, input_dims, fc1_dims, fc2_dims, n_actions) -> None:
+    def __init__(self, lr, input_dims, fc1_dims, fc2_dims, n_actions, noisy_net=True) -> None:
         super().__init__()
         self.input_dims = input_dims
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.n_actions = n_actions
+        self.noisy_net = noisy_net
         
         self.fc = nn.Sequential(
-            nn.Linear(*self.input_dims, self.fc1_dims),
+            nn.Linear(*self.input_dims, self.fc1_dims) if not self.noisy_net else FactorisedNoisyLayer(*self.input_dims, self.fc1_dims),
             nn.ReLU(),
-            nn.Linear(self.fc1_dims, self.fc2_dims),
+            nn.Linear(self.fc1_dims, self.fc2_dims) if not self.noisy_net else FactorisedNoisyLayer(self.fc1_dims, self.fc2_dims),
             nn.ReLU(),
-            nn.Linear(self.fc2_dims, self.n_actions)
+            nn.Linear(self.fc2_dims, self.n_actions) if not self.noisy_net else FactorisedNoisyLayer(self.fc2_dims, self.n_actions)
         )
         
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
@@ -31,9 +159,9 @@ class DQN(nn.Module):
         
         return q_vals
     
-class Dueling_DQN(nn.Module):
+class DuelingDQN(nn.Module):
     def __init__(self, lr, input_dims, fc1_dims, fc2_dims, val_fc1_dims, val_fc2_dims, 
-                 adv_fc1_dims, adv_fc2_dims, n_actions) -> None:
+                 adv_fc1_dims, adv_fc2_dims, n_actions, noisy_net=True) -> None:
         super().__init__()
         self.input_dims = input_dims
         self.fc1_dims = fc1_dims
@@ -43,28 +171,29 @@ class Dueling_DQN(nn.Module):
         self.adv_fc1_dims = adv_fc1_dims
         self.adv_fc2_dims = adv_fc2_dims
         self.n_actions = n_actions
+        self.noisy_net = noisy_net
         
         self.fc = nn.Sequential(
-            nn.Linear(*self.input_dims, self.fc1_dims),
+            nn.Linear(*self.input_dims, self.fc1_dims) if not self.noisy_net else FactorisedNoisyLayer(*self.input_dims, self.fc1_dims),
             nn.ReLU(),
-            nn.Linear(self.fc1_dims, self.fc2_dims),
+            nn.Linear(self.fc1_dims, self.fc2_dims) if not self.noisy_net else FactorisedNoisyLayer(self.fc1_dims, self.fc2_dims),
             nn.ReLU(),
         )
         
         self.val_fc = nn.Sequential(
-            nn.Linear(self.fc2_dims, self.val_fc1_dims),
+            nn.Linear(self.fc2_dims, self.val_fc1_dims) if not self.noisy_net else FactorisedNoisyLayer(self.fc2_dims, self.val_fc1_dims),
             nn.ReLU(),
-            nn.Linear(self.val_fc1_dims, self.val_fc2_dims),
+            nn.Linear(self.val_fc1_dims, self.val_fc2_dims) if not self.noisy_net else FactorisedNoisyLayer(self.val_fc1_dims, self.val_fc2_dims),
             nn.ReLU(),
-            nn.Linear(self.val_fc2_dims, 1)
+            nn.Linear(self.val_fc2_dims, 1) if not self.noisy_net else FactorisedNoisyLayer(self.val_fc2_dims, 1)
         )
         
         self.adv_fc = nn.Sequential(
-            nn.Linear(self.fc2_dims, self.adv_fc1_dims),
+            nn.Linear(self.fc2_dims, self.adv_fc1_dims) if not self.noisy_net else FactorisedNoisyLayer(self.fc2_dims, self.adv_fc1_dims),
             nn.ReLU(),
-            nn.Linear(self.adv_fc1_dims, self.adv_fc2_dims),
+            nn.Linear(self.adv_fc1_dims, self.adv_fc2_dims) if not self.noisy_net else FactorisedNoisyLayer(self.adv_fc1_dims, self.adv_fc2_dims),
             nn.ReLU(),
-            nn.Linear(self.adv_fc2_dims, n_actions)
+            nn.Linear(self.adv_fc2_dims, n_actions) if not self.noisy_net else FactorisedNoisyLayer(self.adv_fc2_dims, n_actions)
         )
         
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
@@ -87,7 +216,7 @@ class Dueling_DQN(nn.Module):
 class Agent:
     def __init__(self, gamma, lr, input_dims, batch_size, n_actions, 
                  max_mem_size=100000, eps_max=1.0, eps_min=0.01, eps_dec=0.002, double_dqn=True, 
-                 dueling_dqn=True, learn_per_target_net_update=50, seed=None) -> None:
+                 dueling_dqn=True, noisy_net=True, learn_per_target_net_update=50, seed=None) -> None:
         self.gamma = gamma
         self.epsilon = eps_max
         self.eps_max = eps_max
@@ -103,6 +232,7 @@ class Agent:
         self.loss = np.inf
         self.double_dqn = double_dqn
         self.dueling_dqn = dueling_dqn
+        self.noisy_net = noisy_net
         self.target_net_update_per_step = learn_per_target_net_update
         self.learn_counter = 0
         self.seed=seed
@@ -111,15 +241,15 @@ class Agent:
             torch.manual_seed(self.seed)
         
         self.Q_eval = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
-                          fc2_dims=256, n_actions=n_actions) if not self.dueling_dqn \
-                      else Dueling_DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
+                          fc2_dims=256, n_actions=n_actions, noisy_net=self.noisy_net) if not self.dueling_dqn \
+                      else DuelingDQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
                           fc2_dims=256, val_fc1_dims=256, val_fc2_dims=256, adv_fc1_dims=256, 
-                          adv_fc2_dims=256, n_actions=n_actions)
+                          adv_fc2_dims=256, n_actions=n_actions, noisy_net=self.noisy_net)
         self.Q_target = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
-                          fc2_dims=256, n_actions=n_actions) if not self.dueling_dqn \
-                      else Dueling_DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
+                          fc2_dims=256, n_actions=n_actions, noisy_net=self.noisy_net) if not self.dueling_dqn \
+                      else DuelingDQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
                           fc2_dims=256, val_fc1_dims=256, val_fc2_dims=256, adv_fc1_dims=256, 
-                          adv_fc2_dims=256, n_actions=n_actions)
+                          adv_fc2_dims=256, n_actions=n_actions, noisy_net=self.noisy_net)
         self._update_target_net()
         
         self.state_memory = np.zeros((self.mem_size, *self.input_dims), dtype=np.float32)
@@ -142,7 +272,7 @@ class Agent:
         self.mem_counter += 1
         
     def choose_action(self, obs):
-        if self.prediction or np.random.random() > self.epsilon:    # no random selection when evaluation
+        if self.prediction or self.noisy_net or np.random.random() > self.epsilon:    # no random selection when evaluation
             state = torch.tensor(np.array([obs])).to(self.Q_eval.device)
             actions = self.Q_eval.forward(state) if self.double_dqn else self.Q_target.forward(state)
             action = torch.argmax(actions).item()
@@ -183,8 +313,9 @@ class Agent:
         self.loss = loss.item()
         self.Q_eval.optimizer.step()
         
-        # self.epsilon = max(self.eps_min, self.eps_max * 1 / (1 + episode))
-        self.epsilon = max(self.eps_max - episode * self.eps_dec, self.eps_min)
+        if not self.noisy_net:
+            # self.epsilon = max(self.eps_min, self.eps_max * 1 / (1 + episode))
+            self.epsilon = max(self.eps_max - episode * self.eps_dec, self.eps_min)
                       
         if self.learn_counter % self.target_net_update_per_step == 0:
             self._update_target_net()
