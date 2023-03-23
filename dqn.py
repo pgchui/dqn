@@ -273,7 +273,7 @@ class Agent:
         
     def choose_action(self, obs):
         if self.prediction or self.noisy_net or np.random.random() > self.epsilon:    # no random selection when evaluation
-            state = torch.tensor(np.array([obs])).to(self.Q_eval.device)
+            state = torch.tensor(np.array(obs)).to(self.Q_eval.device)
             actions = self.Q_eval.forward(state) if self.double_dqn else self.Q_target.forward(state)
             action = torch.argmax(actions).item()
         else:
