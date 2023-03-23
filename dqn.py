@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from abc import ABC
@@ -236,10 +235,11 @@ class Agent:
         self.target_net_update_per_step = learn_per_target_net_update
         self.learn_counter = 0
         self.seed=seed
+        self.np_random = np.random.default_rng(seed=seed)
         
         if self.seed is not None:
             torch.manual_seed(self.seed)
-        
+                    
         self.Q_eval = DQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
                           fc2_dims=256, n_actions=n_actions, noisy_net=self.noisy_net) if not self.dueling_dqn \
                       else DuelingDQN(lr=self.lr, input_dims=self.input_dims, fc1_dims=256, 
@@ -272,12 +272,12 @@ class Agent:
         self.mem_counter += 1
         
     def choose_action(self, obs):
-        if self.prediction or self.noisy_net or np.random.random() > self.epsilon:    # no random selection when evaluation
+        if self.prediction or self.noisy_net or self.np_random.random() > self.epsilon:    # no random selection when evaluation
             state = torch.tensor(np.array(obs)).to(self.Q_eval.device)
             actions = self.Q_eval.forward(state) if self.double_dqn else self.Q_target.forward(state)
             action = torch.argmax(actions).item()
         else:
-            action = np.random.choice(self.action_space)
+            action = self.np_random.choice(self.action_space)
             
         return action
     
@@ -291,7 +291,7 @@ class Agent:
         self.Q_eval.optimizer.zero_grad()
         
         max_mem = min(self.mem_counter, self.mem_size)
-        batch = np.random.choice(max_mem, size=self.batch_size, replace=False)
+        batch = self.np_random.choice(max_mem, size=self.batch_size, replace=False)
         
         batch_idx = np.arange(self.batch_size, dtype=np.int32)
         
