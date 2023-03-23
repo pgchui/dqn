@@ -295,10 +295,10 @@ class Agent:
         
         batch_idx = np.arange(self.batch_size, dtype=np.int32)
         
-        state_batch = torch.tensor(self.state_memory[batch]).to(self.Q_eval.device)
-        new_state_batch = torch.tensor(self.new_state_memory[batch]).to(self.Q_eval.device)
-        reward_batch = torch.tensor(self.reward_memory[batch]).to(self.Q_eval.device)
-        terminal_batch = torch.tensor(self.terminal_memory[batch]).to(self.Q_eval.device)
+        state_batch = torch.as_tensor(self.state_memory[batch]).to(self.Q_eval.device)
+        new_state_batch = torch.as_tensor(self.new_state_memory[batch]).to(self.Q_eval.device)
+        reward_batch = torch.as_tensor(self.reward_memory[batch]).to(self.Q_eval.device)
+        terminal_batch = torch.as_tensor(self.terminal_memory[batch]).to(self.Q_eval.device)
         
         action_batch = self.action_memory[batch]
         
