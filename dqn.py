@@ -237,7 +237,7 @@ class Agent:
         self.learn_counter = 0
         self.seed=seed
         self.np_random = np.random.default_rng(seed=seed)
-        self.prm = prm,
+        self.prm = prm
         if self.prm:
             self.prm_alpha = 0.7
             self.prm_offset = 1e-4
