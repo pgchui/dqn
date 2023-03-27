@@ -337,7 +337,7 @@ class Agent:
         q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
         
         if self.prm:
-            loss = (torch.as_tensor(weight_batch, device=self.Q_eval.device) * F.huber_loss(q_eval, q_target).to(device=self.Q_eval.device)).mean()
+            loss = (torch.as_tensor(weight_batch, dtype=torch.float32, device=self.Q_eval.device) * F.huber_loss(q_eval, q_target).to(device=self.Q_eval.device)).mean()
         else:
             loss = self.Q_eval.loss(q_eval, q_target).to(self.Q_eval.device)
         loss.backward()
