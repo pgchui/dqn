@@ -269,7 +269,7 @@ class Agent:
     def _update_target_net(self):
         self.Q_target.load_state_dict(self.Q_eval.state_dict())
         
-    def store_transition(self, state, action, reward, new_state, done):
+    def store_transition(self, state, action, reward, new_state, done, priority=None):
         idx = self.mem_counter % self.mem_size
         self.state_memory[idx] = state
         self.new_state_memory[idx] = new_state
@@ -277,8 +277,8 @@ class Agent:
         self.reward_memory[idx] = reward
         self.terminal_memory[idx] = done
     
-        if self.prm:
-            # priority calculation
+        if self.prm and priority is None:
+            # default priority calculation
             with torch.no_grad():
                 q_eval = self.Q_eval.forward(torch.as_tensor(state, device=self.Q_eval.device))[0][action].cpu().item()
                 if done:
@@ -288,6 +288,9 @@ class Agent:
                     q_target = reward + self.gamma * q_target_next.cpu().item()
                 error = abs(q_eval - q_target)
             self.priority_memory[idx] = (error + self.prm_offset) ** self.prm_alpha
+        elif self.prm:
+            # external priority
+            self.priority_memory[idx] = (priority + self.prm_offset) ** self.prm_alpha
         
         self.mem_counter += 1
         
