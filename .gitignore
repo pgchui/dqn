@@ -2,3 +2,4 @@ tfb
 checkpoints
 *.pth
 .DS_Store
+__pycache__
