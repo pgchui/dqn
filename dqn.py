@@ -5,7 +5,7 @@ import torch.optim as optim
 import numpy as np
 from abc import ABC
 
-
+# reference: https://github.com/thomashirtz/noisy-networks/blob/main/noisynetworks.py
 class AbstractNoisyLayer(nn.Module, ABC):
     def __init__(
             self,
