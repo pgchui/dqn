@@ -358,7 +358,7 @@ class Agent:
         torch.save(self.Q_eval.state_dict(), filename)
         
     def load(self, filename):
-        self.Q_eval.load_state_dict(torch.load(filename))
+        self.Q_eval.load_state_dict(torch.load(filename, map_location="cuda" if torch.cuda.is_available() else "cpu"))
         
     def eval(self):
         self.prediction = True
